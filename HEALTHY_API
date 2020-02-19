@@ -1,0 +1,277 @@
+---------------------------------------- (1) and (2) select role, db and schema  
+use data_analyst_wh;
+use database manipulated_db;
+use schema HEALTH_API;
+------------------------------------------------- (3) Update procedure name and 
+-------------------------------------- (4) copy sql commands between dash lines 
+create or replace procedure manipulated_db.HEAP_TEMP.update_healthy_api()
+    returns string not null
+    language javascript
+    as
+    $$
+    try { 
+        snowflake.execute ( {sqlText:`
+----------------------------------------- 
+INSERT into "MANIPULATED_DB"."HEALTH_API"."HEALTHY_API" (
+WITH h_1 as
+(
+WITH UNHEALTHY_1 AS (
+SELECT
+  listingid,
+  datecreated,
+  count(apilistingid) count_update,
+  max(diff) max
+FROM
+(
+SELECT
+  d.listingid,
+  d.datecreated,
+  api.listingid apilistingid,
+  datediff('day', createddate, current_date()) diff
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_FIRSTUPDATE" d
+left join 
+    "MANIPULATED_DB"."HEALTH_API"."API_PRICINGLIST_CREATED" api
+on d.listingid = api.listingid
+inner join (
+SELECT listingid, max(createddate) max from "MANIPULATED_DB"."HEALTH_API"."API_PRICINGLIST_CREATED" api group by 1
+) max 
+  on max.max = api.createddate and api.listingid = api.listingid
+order by 1  
+)
+group by 1,2
+order by 1
+)
+SELECT
+listingid,
+case 
+when datediff('day',datecreated, current_date()) < 30 then 'Healthy'
+else 'Unhealthy'
+end as h1
+from UNHEALTHY_1
+order by 1),
+
+h_2 AS (
+  WITH UNHEALTHY_2 AS (
+SELECT
+  listingid,
+  datecreated,
+    NUMBEROFAVAILABLEDAYS12MONTHS,
+  count(apilistingid) count_update,
+  max(diff) max
+FROM
+(
+  
+SELECT
+  d.listingid,
+  d.datecreated,
+  api.listingid apilistingid,
+  datediff('day', createddate, current_date()) diff
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_FIRSTUPDATE" d
+left join 
+    "MANIPULATED_DB"."HEALTH_API"."API_BLOCKLIST_CREATED" api
+on d.listingid = api.listingid
+order by 1  
+) a
+LEFT JOIN
+  (
+  SELECT a.LISTINGID ahn, NUMBEROFAVAILABLEDAYS12MONTHS
+  FROM "PROD_DB"."DBO"."LISTINGSTATISTICSLOG" a
+  INNER JOIN
+  (SELECT LISTINGID, max(datecreated) max
+  FROM "PROD_DB"."DBO"."LISTINGSTATISTICSLOG"
+  group by 1) b on a.listingid = b.listingid and max = datecreated
+  ) ahn
+  on ahn.ahn = listingid
+group by 1,2,3
+order by 1
+  
+  
+
+)
+SELECT
+listingid,
+case when datediff('day',datecreated, current_date()) < 30 or NUMBEROFAVAILABLEDAYS12MONTHS < 60 then 'Healthy'
+else 'Unhealthy'
+end as h2
+from UNHEALTHY_2
+order by 1),
+
+H_3 AS (WITH UNHEALTHY_3 AS
+(SELECT
+LISTINGID,
+MAX(CREATEDDATE) datecreated
+FROM
+(
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_BLOCKLIST_CREATED" a
+where createddate is not null
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_BLOCKLIST_CREATED_TEST" b
+where createddate is not null
+
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_BLOCKLIST_DELETED" c
+ where createddate is not null
+  
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_BLOCK_DELETED" d
+where createddate is not null
+
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_GUESTPRICE_CREATED" e
+  where createddate is not null
+
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_GUESTPRICE_CREATED" e
+where createddate is not null
+  
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_GUESTPRICE_DELETED"
+where createddate is not null
+  
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_LOSDISCOUNT_CREATED"
+where createddate is not null
+  
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_LOSDISCOUNT_DELETED"
+where createddate is not null
+  
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_LOSPRICING_CREATED"
+where createddate is not null
+  
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_LOSPRICING_DELETED"
+where createddate is not null
+  
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_MINIMUMNIGHTS_CREATED"
+where createddate is not null
+  
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_PRICINGLIST_CREATED"
+where createddate is not null
+  
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_PRICINGLIST_DELETED"
+where createddate is not null
+  
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_PRICING_DELETED"
+  where createddate is not null
+
+)
+GROUP BY 1)
+
+SELECT 
+listingid,
+case when datediff('day', datecreated, current_date()) > 2 then 'Unhealthy' else 'Healthy' end as h3
+from
+UNHEALTHY_3)
+SELECT
+to_date( CONVERT_TIMEZONE( 'UTC', current_timestamp() )) date,
+api.listingid listingid,
+case when h1 = 'Unhealthy' or h2 = 'Unhealthy' or h3 = 'Unhealthy'
+then 'Unhealthy'
+else 'Healthy'
+end as health
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_DATECREATED" api
+LEFT JOIN h_1 on h_1.listingid = api.listingid
+LEFT JOIN h_2 on h_2.listingid = api.listingid
+LEFT JOIN h_3 on h_3.listingid = api.listingid
+)
+        `} );
+        return "Succeeded.";
+        }
+    catch (err)  {
+        return "Failed: " + err;
+        }
+    $$
+    ;
+--------------------------------------------- (5) Test that your procedure runs
+call manipulated_db.HEAP_TEMP.update_healthy_api();
+----------------------------------- (6) Make a task to automatise the procedure 
+CREATE OR REPLACE TASK manipulated_db.HEAP_TEMP.update_healthy_api
+    WAREHOUSE = MAINTENANCE_WH,
+    schedule = 'USING CRON 08 4 * * * UTC' -- runs at minute 8 of every hour
+    
+AS call manipulated_db.HEAP_TEMP.update_healthy_api();
+------------------------------------------------------------- (7) activate task
+alter task manipulated_db.HEAP_TEMP.update_healthy_api resume;
