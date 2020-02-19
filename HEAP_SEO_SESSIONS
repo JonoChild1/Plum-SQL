@@ -1,0 +1,64 @@
+-- 
+-- ----------------------------------------------------------------------------
+---------------------------------------- (1) and (2) select role, db and schema  
+use data_analyst_wh;
+use database manipulated_db;
+use schema HEAP_TEMP;
+------------------------------------------------- (3) Update procedure name and 
+-------------------------------------- (4) copy sql commands between dash lines 
+create or replace procedure manipulated_db.HEAP_TEMP.update_heap_SEO()
+    returns string not null
+    language javascript
+    as
+    $$
+    try { 
+        snowflake.execute ( {sqlText:`
+----------------------------------------- 
+CREATE or replace TABLE "MANIPULATED_DB"."HEAP_TEMP"."HEAP_SEO_SESSIONS" as
+      
+SELECT
+      *
+FROM
+    "HEAP_MAIN_PRODUCTION"."HEAP"."SESSIONS" s
+WHERE 
+    (REFERRER like '%www.google%'
+or
+    REFERRER like '%www.yahoo%'
+or
+    REFERRER like '%www.bing%'
+or
+    REFERRER like '%www.baidu%'
+or
+    REFERRER like '%www.ask%'
+or
+    REFERRER like '%www.aol%'
+or
+    REFERRER like '%www.msn%'
+or
+    REFERRER like '%www.yandex%')
+and
+    UTM_SOURCE is null
+and
+    UTM_MEDIUM is null
+and
+    UTM_TERM is null
+and
+    UTM_CONTENT is null       
+        `} );
+        return "Succeeded.";
+        }
+    catch (err)  {
+        return "Failed: " + err;
+        }
+    $$
+    ;
+--------------------------------------------- (5) Test that your procedure runs
+call update_heap_SEO();
+----------------------------------- (6) Make a task to automatise the procedure 
+CREATE OR REPLACE TASK manipulated_db.HEAP_TEMP.update_heap_SEO
+    WAREHOUSE = MAINTENANCE_WH,
+    schedule = 'USING CRON 6 * * * * UTC' -- start at 3:00 am UTC time
+    
+AS call update_heap_SEO();
+------------------------------------------------------------- (7) activate task
+alter task manipulated_db.HEAP_TEMP.update_heap_SEO resume;
