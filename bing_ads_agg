@@ -1,0 +1,90 @@
+---------------------------------------- (1) and (2) select role, db and schema  
+use data_analyst_wh;
+use database manipulated_db;
+use schema cost;
+------------------------------------------------- (3) Update procedure name and 
+-------------------------------------- (4) copy sql commands between dash lines 
+create or replace procedure manipulated_db.cost.BING()
+    returns string not null
+    language javascript
+    as
+    $$
+    try { 
+        snowflake.execute ( {sqlText:`
+----------------------------------------- 
+CREATE or replace  TABLE manipulated_db.cost.bing_ads_agg as
+SELECT
+to_date(TIMEPERIOD) date,
+case 
+when lower(campaignname) like '%unitedkingdom%' then 'UK'
+when lower(campaignname) like '%unitedstates%' then 'US'
+when lower(campaignname) like '%australia%' then 'US'
+else 'ROW'
+end as country,
+case 
+when lower(DEVICETYPE) like '%computer%' then 'Desktop'
+when lower(DEVICETYPE) like '%smartphone%' then 'Mobile'
+when lower(DEVICETYPE) like '%tablet%' then 'Tablet'
+else 'Untracked'
+end as device_type,
+case
+when lower(campaignname) like '%london%' then 'London'
+when lower(campaignname) like '%paris%' then 'Paris'
+when lower(campaignname) like '%nyc%' then 'New York'
+when lower(campaignname) like '%york%' then 'New York'
+when lower(campaignname) like '%rome%' then 'Rome'
+when lower(campaignname) like '%milan%' then 'Milan'
+when lower(campaignname) like '%madrid%' then 'Madrid'
+when lower(campaignname) like '%barcelona%' then 'Barcelona'
+when lower(campaignname) like '%lisbon%' then 'Lisbon'
+when lower(campaignname) like '%berlin%' then 'Berlin'
+when lower(campaignname) like '%copenhagen%' then 'Copenhagen'
+when lower(campaignname) like '%aviv%' then 'Tel Aviv'
+when lower(campaignname) like '%tlv%' then 'TelAviv'
+when lower(campaignname) like '%angeles%' then 'Los Angeles'
+when lower(campaignname) like '%|la|%' then 'Los Angeles'
+Else 'London'
+end as city,
+
+case 
+when lower(campaignname) like '%brand%' then 'Direct & Organic'
+else 'PPC Generic'
+end as SOURCEMEDIUMGROUP,
+
+case 
+when lower(campaignname) like '%brand%' then 'brand'
+else 'paid'
+end as CHANNELGROUP,
+
+'sem' as Channel,
+
+case 
+when lower(campaignname) like '%brand%' then 'brand'
+else 'nonbrand'
+end as SubChannel,
+
+'Not Assigned' as session_value,
+
+sum(SPEND) cost
+
+FROM
+"STITCH_DB"."BING_DATA".SEARCH_QUERY_PERFORMANCE_REPORT_DEDUPE
+group by 1,2,3,4,5,6,7,8
+order by 1;
+        `} );
+        return "Succeeded.";
+        }
+    catch (err)  {
+        return "Failed: " + err;
+        }
+    $$
+    ;
+--------------------------------------------- (5) Test that your procedure runs
+call manipulated_db.cost.bing();
+----------------------------------- (6) Make a task to automatise the procedure 
+CREATE OR REPLACE TASK manipulated_db.cost.bing
+    WAREHOUSE = MAINTENANCE_WH,
+    schedule = 'USING CRON 08 7 * * * UTC' -- start at 3:00 am UTC time
+AS call manipulated_db.cost.bing();
+------------------------------------------------------------- (7) activate task
+alter task manipulated_db.cost.bing resume;
