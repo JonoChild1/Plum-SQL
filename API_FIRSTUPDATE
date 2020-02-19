@@ -1,0 +1,174 @@
+------------------------------------------------- (3) Update procedure name and 
+-------------------------------------- (4) copy sql commands between dash lines 
+create or replace procedure manipulated_db.HEAP_TEMP.update_API_updating()
+    returns string not null
+    language javascript
+    as
+    $$
+    try { 
+        snowflake.execute ( {sqlText:`
+-----------------------------------------
+CREATE or replace TABLE "MANIPULATED_DB"."HEALTH_API"."API_FIRSTUPDATE" as
+WITH APICREATED AS
+(SELECT
+LISTINGID,
+MIN(CREATEDDATE) datecreated
+FROM
+(
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_BLOCKLIST_CREATED" a
+where createddate is not null
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_BLOCKLIST_CREATED_TEST" b
+where createddate is not null
+
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_BLOCKLIST_DELETED" c
+ where createddate is not null
+  
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_BLOCK_DELETED" d
+where createddate is not null
+
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_GUESTPRICE_CREATED" e
+  where createddate is not null
+
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_GUESTPRICE_CREATED" e
+where createddate is not null
+  
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_GUESTPRICE_DELETED"
+where createddate is not null
+  
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_LOSDISCOUNT_CREATED"
+where createddate is not null
+  
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_LOSDISCOUNT_DELETED"
+where createddate is not null
+  
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_LOSPRICING_CREATED"
+where createddate is not null
+  
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_LOSPRICING_DELETED"
+where createddate is not null
+  
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_MINIMUMNIGHTS_CREATED"
+where createddate is not null
+  
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_PRICINGLIST_CREATED"
+where createddate is not null
+  
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_PRICINGLIST_DELETED"
+where createddate is not null
+  
+UNION ALL
+
+SELECT
+listingid,
+createddate
+FROM
+"MANIPULATED_DB"."HEALTH_API"."API_PRICING_DELETED"
+  where createddate is not null
+
+)
+GROUP BY 1)
+SELECT 
+api.listingid,
+datecreated
+FROM
+APICREATED api
+        `} );
+        return "Succeeded.";
+        }
+    catch (err)  {
+        return "Failed: " + err;
+        }
+    $$
+    ;
+--------------------------------------------- (5) Test that your procedure runs
+call manipulated_db.HEAP_TEMP.update_API_updating();
+----------------------------------- (6) Make a task to automatise the procedure 
+CREATE OR REPLACE TASK manipulated_db.HEAP_TEMP.update_API_updating
+    WAREHOUSE = MAINTENANCE_WH,
+    schedule = 'USING CRON 08 4 * * * UTC' -- runs at minute 8 of every hour
+    
+AS call manipulated_db.HEAP_TEMP.update_API_updating();
+------------------------------------------------------------- (7) activate task
+alter TASK manipulated_db.HEAP_TEMP.update_API_updating resume;
