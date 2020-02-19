@@ -1,0 +1,125 @@
+-- 
+-- ----------------------------------------------------------------------------
+---------------------------------------- (1) and (2) select role, db and schema  
+use data_analyst_wh;
+use database manipulated_db;
+use schema HEAP_TEMP;
+------------------------------------------------- (3) Update procedure name and 
+-------------------------------------- (4) copy sql commands between dash lines 
+create or replace procedure manipulated_db.HEAP_TEMP.update_heap_booking()
+    returns string not null
+    language javascript
+    as
+    $$
+    try { 
+        snowflake.execute ( {sqlText:`
+----------------------------------------- 
+CREATE or replace TABLE "MANIPULATED_DB"."HEAP_TEMP"."BOOKING_CHANNEL" as
+      
+SELECT
+    TO_DATE(ab.DATEBOOKINGRESOLVED) DATE,
+    
+    case when seo.bookingid is not null then 'Direct & Organic'
+    when ab.REFERRER is null and ab.CAMPAIGNSOURCE is null and ab.CAMPAIGNNAME is null and ab.CAMPAIGNMEDIUM is null then 'Direct & Organic'
+    when ab.CAMPAIGNSOURCE is null and ab.CAMPAIGNNAME is null and ab.CAMPAIGNMEDIUM is null then 'Direct & Organic'
+    else SOURCEMEDIUMGROUP end as SOURCEMEDIUMGROUP,
+    
+    case when seo.bookingid is not null then 'unpaid'
+    when ab.REFERRER is null and ab.CAMPAIGNSOURCE is null and ab.CAMPAIGNNAME is null and ab.CAMPAIGNMEDIUM is null then 'brand'
+    when ab.CAMPAIGNSOURCE is null and ab.CAMPAIGNNAME is null and ab.CAMPAIGNMEDIUM is null then 'unpaid'
+    else CHANNELGROUP end as CHANNELGROUP,
+
+    case when seo.bookingid is not null then 'seo'
+    when ab.REFERRER is null and ab.CAMPAIGNSOURCE is null and ab.CAMPAIGNNAME is null and ab.CAMPAIGNMEDIUM is null then 'Direct'
+      when ab.CAMPAIGNSOURCE is null and ab.CAMPAIGNNAME is null and ab.CAMPAIGNMEDIUM is null then 'referral'
+    else channel end as channel,
+    
+    case when seo.bookingid is not null then 'nonbrand'
+    when ab.REFERRER is null and ab.CAMPAIGNSOURCE is null and ab.CAMPAIGNNAME is null and ab.CAMPAIGNMEDIUM is null then 'brand'
+    when ab.CAMPAIGNSOURCE is null and ab.CAMPAIGNNAME is null and ab.CAMPAIGNMEDIUM is null then 'none'
+    else SUBCHANNEL end as SUBCHANNEL,
+
+    
+    bl.cityname city,
+    case when ab.COUNTRY = 'United States' then 'US'
+    when ab.country = 'United Kingdom' then 'UK'
+    when ab.country = 'Australia' then 'AU'
+    else 'ROW' end as Country,
+    ab.device_type,
+    case when bl.datebookingresolved < '2019-05-01' then 'Not Assigned' 
+    when bl.gtc <= 2000 then '0-2000'
+    when bl.gtc >= 2001 and bl.gtc <= 5000 then '2001-5000'
+    when bl.gtc >= 5001 and bl.gtc <= 10000 then '5001-10000'
+    when bl.gtc >= 10001 then '+10000' end as session_value,
+    count(distinct bl.bookingid) bookings,
+    count(distinct(case when group_name = 'Guest' then bl.bookingid end)) self_booked,
+    count(distinct(case when group_name = 'MatchMakers' then bl.bookingid end)) MM_booked,
+    count(distinct(case when group_name = 'Partnerships' then bl.bookingid end)) Pship_booked,
+    sum(GTC) sales,
+    sum(case when group_name = 'Guest' then bl.gtc end) self_GBV,
+    sum(case when group_name = 'MatchMakers' then bl.gtc end) MM_GBV,
+    sum(case when group_name = 'Partnerships' then bl.gtc end) Pship_GBV
+FROM
+"PROD_DB"."DBO"."ALLOCATION_BOOKINGS" ab
+LEFT JOIN 
+    "PROD_DB"."DBO"."BOOKINGLISTING" bl
+on bl.bookingid = ab.bookingid
+LEFT JOIN
+    "STITCH_DB"."ALLOCATION"."SHEET1" al
+on al.SOURCEMEDIUM = concat(CAMPAIGNSOURCE, ' / ', CAMPAIGNMEDIUM)
+LEFT JOIN "PROD_DB"."DBO"."CODE_DEAL_ID2" d
+on d.CODE = bl.code
+LEFT JOIN (
+
+SELECT
+      bookingid
+FROM
+    "PROD_DB"."DBO"."ALLOCATION_BOOKINGS" ab
+WHERE 
+    (REFERRER like '%www.google%'
+or
+    REFERRER like '%www.yahoo%'
+or
+    REFERRER like '%www.bing%'
+or
+    REFERRER like '%www.baidu%'
+or
+    REFERRER like '%www.ask%'
+or
+    REFERRER like '%www.aol%'
+or
+    REFERRER like '%www.msn%'
+or
+    REFERRER like '%www.yandex%')
+and
+    CAMPAIGNSOURCE is null
+and
+    CAMPAIGNMEDIUM is null
+and
+    CAMPAIGNNAME is null   
+) seo on bl.bookingid = seo.bookingid
+where 
+    ab.status = 3
+//and 
+//    TO_DATE(ab.DATEBOOKINGRESOLVED) <= '2019-05-01'
+group by 
+    1,2,3,4,5,6,7,8,9
+    
+        `} );
+        return "Succeeded.";
+        }
+    catch (err)  {
+        return "Failed: " + err;
+        }
+    $$
+    ;
+--------------------------------------------- (5) Test that your procedure runs
+call manipulated_db.HEAP_TEMP.update_heap_booking();
+----------------------------------- (6) Make a task to automatise the procedure 
+CREATE OR REPLACE TASK manipulated_db.HEAP_TEMP.update_heap_booking
+    WAREHOUSE = MAINTENANCE_WH,
+    schedule = 'USING CRON 05 5 * * * UTC' -- start at 3:00 am UTC time
+    
+AS call update_heap_booking();
+------------------------------------------------------------- (7) activate task
+alter task manipulated_db.HEAP_TEMP.update_heap_booking resume;
