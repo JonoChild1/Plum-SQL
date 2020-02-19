@@ -1,0 +1,198 @@
+-- 
+-- ----------------------------------------------------------------------------
+---------------------------------------- (1) and (2) select role, db and schema  
+------------------------------------------------- (3) Update procedure name and 
+-------------------------------------- (4) copy sql commands between dash lines 
+create or replace procedure 
+PROD_DB.DBO.proc_insert_data_collection_score_CITIES()
+    returns string not null
+    language javascript
+    as
+    $$
+    try { 
+        snowflake.execute ( {sqlText:`
+----------------------------------------- 
+INSERT into COLLECTION_SCORE_CITIES (
+
+WITH SCORE AS (Select
+au.email,
+a.cityid,
+a.listingid as Listing_ID,
+city.name,
+a.HIDDENFROMSEARCH,
+ll.NumberOfAvailableDays6Months as SIXMAHN,
+
+case when CALENDAR = 'No Calendar' then 'No Calendar'
+when LINK_TO_CALENDAR = 'Broken Link' then 'Broken Link'
+else 'Synched Calendar' end as calendar,
+
+case when (a.IsInstantBook = 1 or a.IsInstantBook = TRUE or a.IsInstantBook = 'TRUE') then 'TRUE' else 'FALSE' end as Is_Instant_Book,
+wdis.week_discount as Week_Discount,
+mdis.month_discount as Month_Discount,
+a.MinimumNights as Minimum_Nights,
+a.CancellationPolicyId,
+case
+when a.CancellationPolicyId = 1 then 'Relaxed'
+when a.CancellationPolicyId = 2 then 'Relaxed'
+when a.CancellationPolicyId = 3 then 'Firm'
+when a.CancellationPolicyId = 4 then 'Firm'
+when a.CancellationPolicyId = 6 then 'Firm'
+when a.CancellationPolicyId = 7 then 'Firm'
+end as CancellationPolicy,
+Q1_Sales,
+LASTSIXMONTHSBOOKINGS,
+case when ll.NumberOfAvailableDays6Months <= 10 or a.HIDDENFROMSEARCH = 'TRUE' then -20 else 0 end as SCOREHIDDENORAHN,
+
+case when (a.IsInstantBook = 1 or a.IsInstantBook = TRUE or a.IsInstantBook = 'TRUE') then 20 else -20 end as SCOREIB,
+
+case when CALENDAR = 'No Calendar' then 0
+when LINK_TO_CALENDAR = 'Broken Link' then -20
+when a.isexclusive = 'TRUE' then 20
+else 20 end as SCORECALENDAR,
+
+CASE WHEN (wdis.week_discount is not null and a.MinimumNights < 7 and wdis.week_discount > 0.03)  
+               or ((mdis.month_discount is not null or mdis.month_discount != 0) and a.MinimumNights < 30) then 10 else -10 end as SCOREDISCOUNT,
+
+case when a.MinimumNights > 3 then 0 else 10 end as SCOREMINIMUMNIGHTS,
+
+case
+when a.CancellationPolicyId = 1 then 10
+when a.CancellationPolicyId = 2 then 10
+when a.CancellationPolicyId = 3 then 0
+when a.CancellationPolicyId = 4 then 0
+when a.CancellationPolicyId = 6 then 0
+when a.CancellationPolicyId = 7 then 0
+end as SCORECancellationPolicy
+
+from stitch_db.production_temp.LISTING as a
+left join "PROD_DB"."DBO"."CITY" city on city.cityid = a.cityid
+left join prod_db.dbo.applicationuser as AU on a.UserId = au.applicationuserid
+
+left join prod_db.host.commissionmodel as k on a.userid=k.userid
+left join prod_db.dbo.neighbourhood_marketingview as nb on a.neighbourhoodid=nb.neighbourhoodid
+left join (select * from prod_db.dbo.ListingStatisticsLog where cast(DateCreated as date) = DATEADD(Day ,-2, current_date) ) as ll on ll.listingid=a.Listingid 
+left join (select listingid as listingid, discountpercentage/100 as month_discount from prod_db.pricingconfig.lengthofstaydiscount where lengthofstay = 28) as mdis on mdis.listingid=a.listingid
+left join (select listingid as listingid, discountpercentage/100 as week_discount from prod_db.pricingconfig.lengthofstaydiscount where lengthofstay = 7) as wdis on wdis.listingid=a.listingid
+left join (select
+a.ListingId,
+sum(case when a.DateBookingResolved between '2020-01-01' and '2020-04-01' and a.status = 3
+    and datediff('days', l.onboardingdate, current_date()) < 90 then  a.GuestTotalCharged/a.ListingGBPFxRate else null end) as Q1_Sales
+from prod_db.dbo.Booking as a
+LEFT JOIN "STITCH_DB"."PRODUCTION_TEMP"."LISTING" l on l.listingid = a.listingid
+group by a.listingid ) as b on b.listingid = a.listingid
+left join (
+select 
+L.listingid as Listingid,
+CONCAT(AU.FirstName,' ',AU.LastName) as Host_Full_Name,
+AU.email as Host_Email,
+AU.PhoneNumber as Host_Phone_Number,
+case 
+when EC.CT is null then 'No Calendar' 
+else null
+end as Calendar,
+case 
+when EC2.CT is not null then 'Broken Link' 
+else null
+end as Link_To_Calendar
+from stitch_db.production_temp.listing L
+join prod_db.dbo.ApplicationUser AU on L.UserId = AU.ApplicationUserId
+left join 
+    (select listingid, count(ListingExternalCalendarID) CT from prod_db.dbo.ListingExternalCalendar
+    group by ListingId) EC on EC.listingid = L.ListingId
+left join 
+    (select listingid, count(ListingExternalCalendarID) CT from prod_db.dbo.ListingExternalCalendar
+    where IsWorking = 'false'
+    group by ListingId) EC2 on EC2.listingid = L.ListingId
+where L.Status = 3
+and EC.CT is null
+OR
+L.Status = 3
+and EC2.CT is not null) 
+
+as cal on cal.listingid = a.ListingId
+
+               
+left join (SELECT 
+LISTINGID, 
+count(distinct case when datebookingresolved between '2019-07-01' and '2019-12-31'
+and status = 3 then bookingid end) LASTSIXMONTHSBOOKINGS
+FROM "PROD_DB"."DBO"."BOOKINGLISTING" group by 1) as bo
+on bo.listingid = a.listingid
+
+where a.Status = 3 
+and a.onboardingdate < '2020-01-01'
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18
+order by 1)
+SELECT
+current_date() date,
+cityid,
+name city,
+count(Listing_ID) NumberOfListings,
+sum(case when SCOREHIDDENORAHN = 0 then 1 end) HIDDENORAHN,
+sum(case when SCOREIB = 20 then 1 end) IB,
+sum(case when SCORECALENDAR = 20 then 1 end) CALENDAR,
+sum(case when SCOREDISCOUNT = 10 then 1 end) DISCOUNT,
+sum(case when scoreCancellationPolicy = 10 then 1 end) CANCELLATIONPOLICY,
+sum(case when SCOREMINIMUMNIGHTS = 10 then 1 end) MINIMUMNIGHTS
+
+from
+score
+group by 1,2,3
+order by 2);
+----------------------------------------- 
+        `} );
+        return "Succeeded.";
+        }
+    catch (err)  {
+        return "Failed: " + err;
+        }
+    $$
+    ;
+--------------------------------------------- (5) Test that your procedure runs
+call PROD_DB.DBO.proc_insert_data_collection_score_CITIES()
+;
+----------------------------------- (6) Make a task to automatise the procedure 
+CREATE OR REPLACE TASK task_INSERT_DATA_COLLECTION_SCORE_CITIES
+    WAREHOUSE = DATA_ANALYST_WH,
+    schedule = 'USING CRON 0 6 * * * UTC' -- start at 3:00 am UTC time
+    
+AS call proc_insert_data_collection_score_CITIES();
+------------------------------------------------------------- (7) activate task
+alter task task_INSERT_DATA_COLLECTION_SCORE_CITIES resume;
+
+create or replace procedure 
+PROD_DB.DBO.proc_insert_data_collection_score_CITIES()
+    returns string not null
+    language javascript
+    as
+    $$
+    try { 
+        snowflake.execute ( {sqlText:`
+----------------------------------------- 
+INSERT into COLLECTION_SCORE_CITIES (
+
+
+from
+score
+group by 1,2,3
+order by 2);
+----------------------------------------- 
+        `} );
+        return "Succeeded.";
+        }
+    catch (err)  {
+        return "Failed: " + err;
+        }
+    $$
+    ;
+--------------------------------------------- (5) Test that your procedure runs
+call proc_insert_data_collection_score_CITIES()
+;
+----------------------------------- (6) Make a task to automatise the procedure 
+CREATE OR REPLACE TASK task_INSERT_DATA_COLLECTION_SCORE_CITIES
+    WAREHOUSE = DATA_ANALYST_WH,
+    schedule = 'USING CRON 0 6 * * * UTC' -- start at 3:00 am UTC time
+    
+AS call proc_insert_data_collection_score_CITIES();
+------------------------------------------------------------- (7) activate task
+alter task task_INSERT_DATA_COLLECTION_SCORE_CITIES resume;
