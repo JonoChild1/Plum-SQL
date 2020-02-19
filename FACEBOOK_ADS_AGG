@@ -1,0 +1,75 @@
+---------------------------------------- (1) and (2) select role, db and schema  
+use data_analyst_wh;
+use database manipulated_db;
+use schema cost;
+------------------------------------------------- (3) Update procedure name and 
+-------------------------------------- (4) copy sql commands between dash lines 
+create or replace procedure manipulated_db.cost.facebook()
+    returns string not null
+    language javascript
+    as
+    $$
+    try { 
+        snowflake.execute ( {sqlText:`
+----------------------------------------- 
+CREATE or replace  TABLE manipulated_db.cost.FACEBOOK_ADS_AGG as
+
+SELECT
+to_date(DATE_START) date,
+'Unknown' as city,
+case
+when COUNTRY = 'US' then 'US'
+when COUNTRY = 'GB' then 'UK'
+when COUNTRY = 'AU' then 'AU'
+else 'ROW' end as COUNTRY,
+'Not Assigned' as session_value,
+case 
+when lower(ACCOUNT_NAME) like '%guest acquisition%' then 'Facebook Paid'
+when lower(ACCOUNT_NAME) like '%retargeting%' then 'Facebook Paid'
+when lower(ACCOUNT_NAME) like '%host acquisition%' then 'Aquisition'
+end as SOURCEMEDIUMGROUP,
+
+case 
+when lower(ACCOUNT_NAME) like '%guest acquisition%' then 'paid'
+when lower(ACCOUNT_NAME) like '%retargeting%' then 'paid'
+when lower(ACCOUNT_NAME) like '%host acquisition%' then 'paid'
+end as channelgroup,
+
+case 
+when lower(ACCOUNT_NAME) like '%guest acquisition%' then 'paid social'
+when lower(ACCOUNT_NAME) like '%retargeting%' then 'paid social'
+when lower(ACCOUNT_NAME) like '%host acquisition%' then 'paid social'
+end as channel,
+
+case 
+when lower(ACCOUNT_NAME) like '%guest acquisition%' then 'prospecting'
+when lower(ACCOUNT_NAME) like '%retargeting%' then 'retargeting'
+when lower(ACCOUNT_NAME) like '%host acquisition%' then 'prospecting'
+end as SubChannel,
+
+'Untracked' as device_type,
+
+sum(spend) cost
+
+FROM
+"STITCH_DB"."FACEBOOKS_ADS"."ADS_INSIGHTS_COUNTRY"
+
+group by 1,2,3,4,5,6,7,8,9
+
+        `} );
+        return "Succeeded.";
+        }
+    catch (err)  {
+        return "Failed: " + err;
+        }
+    $$
+    ;
+--------------------------------------------- (5) Test that your procedure runs
+call manipulated_db.cost.facebook();
+----------------------------------- (6) Make a task to automatise the procedure 
+CREATE OR REPLACE TASK manipulated_db.cost.facebook
+    WAREHOUSE = MAINTENANCE_WH,
+    schedule = 'USING CRON 08 7 * * * UTC' -- start at 3:00 am UTC time
+AS call manipulated_db.cost.facebook();
+------------------------------------------------------------- (7) activate task
+alter task manipulated_db.cost.facebook resume;
