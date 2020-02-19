@@ -1,0 +1,91 @@
+--GOOGLE_ADS
+---------------------------------------- (1) and (2) select role, db and schema  
+use data_analyst_wh;
+use database manipulated_db;
+use schema cost;
+------------------------------------------------- (3) Update procedure name and 
+-------------------------------------- (4) copy sql commands between dash lines 
+create or replace procedure manipulated_db.cost.google_ads()
+    returns string not null
+    language javascript
+    as
+    $$
+    try { 
+        snowflake.execute ( {sqlText:`
+----------------------------------------- 
+CREATE or replace  TABLE manipulated_db.cost.google_ads_agg as
+SELECT
+to_date(DAY) date,
+case 
+when lower(CAMPAIGN) like '%unitedkingdom%' then 'UK'
+when lower(CAMPAIGN) like '%unitedstates%' then 'US'
+when lower(CAMPAIGN) like '%australia%' then 'US'
+else 'ROW'
+end as country,
+case 
+when lower(DEVICE) like '%computer%' then 'Desktop'
+when lower(DEVICE) like '%mobile%' then 'Mobile'
+when lower(DEVICE) like '%tablet%' then 'Tablet'
+else 'Untracked'
+end as device_type,
+case
+when lower(campaign) like '%london%' then 'London'
+when lower(campaign) like '%paris%' then 'Paris'
+when lower(campaign) like '%nyc%' then 'New York'
+when lower(campaign) like '%york%' then 'New York'
+when lower(campaign) like '%rome%' then 'Rome'
+when lower(campaign) like '%milan%' then 'Milan'
+when lower(campaign) like '%madrid%' then 'Madrid'
+when lower(campaign) like '%barcelona%' then 'Barcelona'
+when lower(campaign) like '%lisbon%' then 'Lisbon'
+when lower(campaign) like '%berlin%' then 'Berlin'
+when lower(campaign) like '%copenhagen%' then 'Copenhagen'
+when lower(campaign) like '%aviv%' then 'Tel Aviv'
+when lower(campaign) like '%tlv%' then 'TelAviv'
+when lower(campaign) like '%angeles%' then 'Los Angeles'
+when lower(campaign) like '%|la|%' then 'Los Angeles'
+Else 'London'
+end as city,
+
+case 
+when lower(campaign) like '%brand%' then 'Direct & Organic'
+else 'PPC Generic'
+end as SOURCEMEDIUMGROUP,
+
+case 
+when lower(campaign) like '%brand%' then 'brand'
+else 'paid'
+end as CHANNELGROUP,
+
+'sem' as Channel,
+
+case 
+when lower(campaign) like '%brand%' then 'brand'
+else 'nonbrand'
+end as SubChannel,
+
+'Not Assigned' as session_value,
+
+sum(cost)/1000000 cost
+
+FROM
+"STITCH_DB"."GOOGLE_ADS"."SEARCH_QUERY_PERFORMANCE_REPORT_DEDUPE"
+group by 1,2,3,4,5,6,7,8
+order by 1;
+        `} );
+        return "Succeeded.";
+        }
+    catch (err)  {
+        return "Failed: " + err;
+        }
+    $$
+    ;
+--------------------------------------------- (5) Test that your procedure runs
+call manipulated_db.cost.google_ads();
+----------------------------------- (6) Make a task to automatise the procedure 
+CREATE OR REPLACE TASK manipulated_db.cost.google_ads
+    WAREHOUSE = MAINTENANCE_WH,
+    schedule = 'USING CRON 08 7 * * * UTC' -- start at 3:00 am UTC time
+AS call manipulated_db.cost.google_ads();
+------------------------------------------------------------- (7) activate task
+alter task manipulated_db.cost.google_ads resume;
