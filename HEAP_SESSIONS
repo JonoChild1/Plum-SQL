@@ -1,0 +1,259 @@
+---------------------------------------- (1) and (2) select role, db and schema  
+use data_analyst_wh;
+use database manipulated_db;
+use schema HEAP_TEMP;
+------------------------------------------------- (3) Update procedure name and 
+-------------------------------------- (4) copy sql commands between dash lines 
+create or replace procedure manipulated_db.HEAP_TEMP.update_heap_sessions()
+    returns string not null
+    language javascript
+    as
+    $$
+    try { 
+        snowflake.execute ( {sqlText:`
+-----------------------------------------
+CREATE or replace TABLE "MANIPULATED_DB"."HEAP_TEMP"."HEAP_SESSIONS" as
+      
+SELECT
+    to_date(s.TIME) TIME,
+    case when seo.session_id is not null then 'Direct & Organic'
+    when s.REFERRER is null and s.UTM_SOURCE is null and s.UTM_CAMPAIGN is null and s.UTM_MEDIUM is null then 'Direct & Organic'
+    when s.UTM_SOURCE is null and s.UTM_CAMPAIGN is null and s.UTM_MEDIUM is null then 'Direct & Organic'
+    else SOURCEMEDIUMGROUP end as SOURCEMEDIUMGROUP,
+    
+    case when seo.session_id is not null then 'unpaid'
+    when s.REFERRER is null and s.UTM_SOURCE is null and s.UTM_CAMPAIGN is null and s.UTM_MEDIUM is null then 'brand'
+    when s.UTM_SOURCE is null and s.UTM_CAMPAIGN is null and s.UTM_MEDIUM is null then 'unpaid'
+    else CHANNELGROUP end as CHANNELGROUP,
+
+    case when seo.session_id is not null then 'seo'
+    when s.REFERRER is null and s.UTM_SOURCE is null and s.UTM_CAMPAIGN is null and s.UTM_MEDIUM is null then 'Direct'
+      when s.UTM_SOURCE is null and s.UTM_CAMPAIGN is null and s.UTM_MEDIUM is null then 'referral'
+    else channel end as channel,
+    
+    case when seo.session_id is not null then 'nonbrand'
+    when s.REFERRER is null and s.UTM_SOURCE is null and s.UTM_CAMPAIGN is null and s.UTM_MEDIUM is null then 'brand'
+    when s.UTM_SOURCE is null and s.UTM_CAMPAIGN is null and s.UTM_MEDIUM is null then 'none'
+    else SUBCHANNEL end as SUBCHANNEL,
+    
+    
+    pv.city,
+    
+    case when s.COUNTRY = 'United States' then 'US'
+    when s.country = 'United Kingdom' then 'UK'
+    when s.country = 'Australia' then 'AU'
+    else 'ROW' end as Country,
+    
+    s.DEVICE_TYPE,
+    
+    s.SESSION_ID,
+    
+    case when FINAL_VALUE <= 2000 then '0-2000'
+    when FINAL_VALUE >= 2001 and FINAL_VALUE <= 5000 then '2001-5000'
+    when FINAL_VALUE >= 5001 and FINAL_VALUE <= 10000 then '5001-10000'
+    when FINAL_VALUE >= 10001 then '+10000' end as session_value
+    
+
+FROM
+    "HEAP_MAIN_PRODUCTION"."HEAP"."SESSIONS" s
+left join (with sessions as 
+(SELECT
+a.SESSION_ID,
+r.CITY
+FROM
+(SELECT
+SESSION_ID,
+MAX(number_events) max_event
+FROM
+
+(SELECT
+    s.SESSION_ID,
+    case
+    when path like '%search?/Cityid=1%'
+    or title like '%ondon%'
+    or path like '%ondon%'
+    or query like '%search?/Cityid=1%' then 'London'
+
+    when path like '%search?/Cityid=2%'
+    or title like '%aris%'
+    or path like '%aris%'
+    or query like '%search?/Cityid=2%' then 'Paris'
+
+    when path like '%search?/Cityid=3%'
+    or title like '%ew-york%'
+    or path like '%ew-york%'
+    or query like '%search?/Cityid=3%' then 'New York'
+
+    when path like '%search?/Cityid=4%'
+    or title like '%os-angeles%'
+    or path like '%os-angeles%'
+    or query like '%search?/Cityid=4%' then 'Los Angeles'
+
+    when path like '%search?/Cityid=5%'
+    or title like '%ome%'
+    or path like '%ome%'
+    or query like '%search?/Cityid=5%' then 'Rome'
+
+    when path like '%search?/Cityid=6%'
+    or title like '%ilan%'
+    or path like '%ilan%'
+    or query like '%search?/Cityid=6%' then 'Milan'
+
+    when path like '%search?/Cityid=7%'
+    or title like '%openhagen%'
+    or path like '%openhagen%'
+    or query like '%search?/Cityid=7%' then 'Copenhagen'
+
+    when path like '%search?/Cityid=8%'
+    or title like '%adrid%'
+    or path like '%adrid%'
+    or query like '%search?/Cityid=8%' then 'Madrid'
+
+    when path like '%search?/Cityid=9%'
+    or title like '%arcelona%'
+    or path like '%arcelona%'
+    or query like '%search?/Cityid=9%' then 'Barcelona'
+
+    when path like '%search?/Cityid=10%'
+    or title like '%isbon%'
+    or path like '%isbon%'
+    or query like '%search?/Cityid=10%' then 'Lisbon'
+
+    when path like '%search?/Cityid=11%'
+    or title like '%erlin%'
+    or path like '%erlin%'
+    or query like '%search?/Cityid=11%' then 'Berlin'
+
+    when path like '%search?/Cityid=12%'
+    or title like '%el-aviv%'
+    or path like '%el-aviv%'
+    or query like '%search?/Cityid=12%' then 'Tel Aviv'
+    else 'Unknown'
+    end as city,
+    COUNT(DISTINCT pv.EVENT_ID) number_events
+FROM
+    "HEAP_MAIN_PRODUCTION"."HEAP"."SESSIONS" s
+left join 
+    "HEAP_MAIN_PRODUCTION"."HEAP"."PAGEVIEWS" pv
+on 
+    s.user_id = pv.user_id and s.session_id = pv.session_id
+group by 
+    1,2
+)
+group by
+    1) a
+    
+inner join
+
+    (SELECT
+      s.SESSION_ID,
+      case
+      when path like '%search?/Cityid=1%'
+      or title like '%ondon%'
+      or path like '%ondon%'
+      or query like '%search?/Cityid=1%' then 'London'
+
+      when path like '%search?/Cityid=2%'
+      or title like '%aris%'
+      or path like '%aris%'
+      or query like '%search?/Cityid=2%' then 'Paris'
+
+      when path like '%search?/Cityid=3%'
+      or title like '%ew-york%'
+      or path like '%ew-york%'
+      or query like '%search?/Cityid=3%' then 'New York'
+
+      when path like '%search?/Cityid=4%'
+      or title like '%os-angeles%'
+      or path like '%os-angeles%'
+      or query like '%search?/Cityid=4%' then 'Los Angeles'
+
+      when path like '%search?/Cityid=5%'
+      or title like '%ome%'
+      or path like '%ome%'
+      or query like '%search?/Cityid=5%' then 'Rome'
+
+      when path like '%search?/Cityid=6%'
+      or title like '%ilan%'
+      or path like '%ilan%'
+      or query like '%search?/Cityid=6%' then 'Milan'
+
+      when path like '%search?/Cityid=7%'
+      or title like '%openhagen%'
+      or path like '%openhagen%'
+      or query like '%search?/Cityid=7%' then 'Copenhagen'
+
+      when path like '%search?/Cityid=8%'
+      or title like '%adrid%'
+      or path like '%adrid%'
+      or query like '%search?/Cityid=8%' then 'Madrid'
+
+      when path like '%search?/Cityid=9%'
+      or title like '%arcelona%'
+      or path like '%arcelona%'
+      or query like '%search?/Cityid=9%' then 'Barcelona'
+
+      when path like '%search?/Cityid=10%'
+      or title like '%isbon%'
+      or path like '%isbon%'
+      or query like '%search?/Cityid=10%' then 'Lisbon'
+
+      when path like '%search?/Cityid=11%'
+      or title like '%erlin%'
+      or path like '%erlin%'
+      or query like '%search?/Cityid=11%' then 'Berlin'
+
+      when path like '%search?/Cityid=12%'
+      or title like '%el-aviv%'
+      or path like '%el-aviv%'
+      or query like '%search?/Cityid=12%' then 'Tel Aviv'
+      else 'Unknown'
+      end as city,
+      COUNT(DISTINCT pv.EVENT_ID) number_events
+FROM
+    "HEAP_MAIN_PRODUCTION"."HEAP"."SESSIONS" s
+left join 
+    "HEAP_MAIN_PRODUCTION"."HEAP"."PAGEVIEWS" pv
+on 
+    s.user_id = pv.user_id and s.session_id = pv.session_id
+group by 
+    1,2) r
+  on 
+    a.session_id = r.session_id and max_event = number_events)
+
+SELECT
+sessions.SESSION_ID,
+case when s.SESSION_ID is null then city else 'Multiple' end as City
+FROM 
+sessions
+left join
+(SELECT SESSION_ID, count(SESSION_ID) from sessions group by 1 having count(SESSION_ID) > 1) s
+on s.SESSION_ID = sessions.session_id
+group by 1,2) pv
+on s.session_id = pv.session_id
+LEFT JOIN
+    "STITCH_DB"."ALLOCATION"."SHEET1" al
+on al.SOURCEMEDIUM = s.UTM_SOURCE || ' / ' || s.UTM_MEDIUM
+LEFT JOIN "MANIPULATED_DB"."HEAP_TEMP"."HEAP_SEO_SESSIONS" seo
+on seo.session_id = s.session_id
+left join "MANIPULATED_DB"."HEAP_TEMP"."HEAP_SESSIONS_VALUE" v on v.session_id = s.session_id
+
+----------------------------------------- 
+        `} );
+        return "Succeeded.";
+        }
+    catch (err)  {
+        return "Failed: " + err;
+        }
+    $$
+    ;
+--------------------------------------------- (5) Test that your procedure runs
+call update_heap_sessions();
+----------------------------------- (6) Make a task to automatise the procedure 
+CREATE OR REPLACE TASK manipulated_db.HEAP_TEMP.update_heap_sessions
+    WAREHOUSE = MAINTENANCE_WH,
+    schedule = 'USING CRON 03 3 * * * UTC' -- start at 3:00 am UTC time
+    
+AS call update_heap_sessions();
+------------------------------------------------------------- (7) activate task
+alter task manipulated_db.HEAP_TEMP.update_heap_sessions resume;
