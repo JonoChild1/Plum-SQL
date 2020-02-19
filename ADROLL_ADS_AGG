@@ -1,0 +1,73 @@
+--ADROLL
+---------------------------------------- (1) and (2) select role, db and schema  
+use data_analyst_wh;
+use database manipulated_db;
+use schema cost;
+------------------------------------------------- (3) Update procedure name and 
+-------------------------------------- (4) copy sql commands between dash lines 
+create or replace procedure manipulated_db.cost.adroll()
+    returns string not null
+    language javascript
+    as
+    $$
+    try { 
+        snowflake.execute ( {sqlText:`
+----------------------------------------- 
+CREATE or replace  TABLE manipulated_db.cost.ADROLL_ADS_AGG as
+
+SELECT
+concat(right(date,4), '-',  left(date,2) , '-', SUBSTRING(date, 4, 2)) DATE,
+case
+when lower(ad) like '%london%' then 'London'
+when lower(ad) like '%paris%' then 'Paris'
+when lower(ad) like '%nyc%' then 'New York'
+when lower(ad) like '%york%' then 'New York'
+when lower(ad) like '%rome%' then 'Rome'
+when lower(ad) like '%milan%' then 'Milan'
+when lower(ad) like '%madrid%' then 'Madrid'
+when lower(ad) like '%barcelona%' then 'Barcelona'
+when lower(ad) like '%lisbon%' then 'Lisbon'
+when lower(ad) like '%berlin%' then 'Berlin'
+when lower(ad) like '%copenhagen%' then 'Copenhagen'
+when lower(ad) like '%aviv%' then 'Tel Aviv'
+when lower(ad) like '%tlv%' then 'TelAviv'
+when lower(ad) like '%angeles%' then 'Los Angeles'
+when lower(ad) like '%|la|%' then 'Los Angeles'
+Else 'London'
+end as city,
+case
+when AD like '%USD%' then 'US'
+when AD like '%GBP%' then 'UK'
+when AD like '%AUD%' then 'AU'
+ELSE 'ROW'
+end as country,
+'Untracked' as DEVICE_TYPE,
+'Not Assigned' as SESSION_value,
+'Aquisition' as SOURCEMEDIUMGROUP,
+'paid' as CHANNELGROUP,
+'display' as CHANNEL,
+'prospecting' as SUBCHANNEL,
+sum(BILLING_COST) cost
+FROM
+"STITCH_DB"."ADROLL_DATA"."ADROLL_AD_REPORTS"
+where BILLING_COST != 0
+group by 1,2,3,4,5,6,7,8
+ORDER BY 1
+
+        `} );
+        return "Succeeded.";
+        }
+    catch (err)  {
+        return "Failed: " + err;
+        }
+    $$
+    ;
+--------------------------------------------- (5) Test that your procedure runs
+call manipulated_db.cost.adroll();
+----------------------------------- (6) Make a task to automatise the procedure 
+CREATE OR REPLACE TASK manipulated_db.cost.adroll
+    WAREHOUSE = MAINTENANCE_WH,
+    schedule = 'USING CRON 08 7 * * * UTC' -- start at 3:00 am UTC time
+AS call manipulated_db.cost.adroll();
+------------------------------------------------------------- (7) activate task
+alter task manipulated_db.cost.adroll resume;
