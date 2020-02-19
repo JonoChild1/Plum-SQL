@@ -1,0 +1,130 @@
+-- 
+-- ----------------------------------------------------------------------------
+---------------------------------------- (1) and (2) select role, db and schema  
+use data_analyst_wh;
+use database manipulated_db;
+use schema HEAP_TEMP;
+------------------------------------------------- (3) Update procedure name and 
+-------------------------------------- (4) copy sql commands between dash lines 
+create or replace procedure manipulated_db.HEAP_TEMP.update_heap_lead()
+    returns string not null
+    language javascript
+    as
+    $$
+    try { 
+        snowflake.execute ( {sqlText:`
+----------------------------------------- 
+CREATE or replace TABLE "MANIPULATED_DB"."HEAP_TEMP"."LEAD_CHANNEL" as
+SELECT
+    to_DATE(MIN_DEAL_TIME) date,
+    
+    case when seo.DEAL_ID is not null then 'Direct & Organic'
+    when d.REFERRER is null and d.UTM_SOURCE is null and d.UTM_CAMPAIGN is null and d.UTM_MEDIUM is null then 'Direct & Organic'
+    when d.UTM_SOURCE is null and d.UTM_CAMPAIGN is null and d.UTM_MEDIUM is null then 'Direct & Organic'
+    else SOURCEMEDIUMGROUP end as SOURCEMEDIUMGROUP,
+    
+    
+    case when seo.DEAL_ID is not null then 'unpaid'
+    when d.REFERRER is null and d.UTM_SOURCE is null and d.UTM_CAMPAIGN is null and d.UTM_MEDIUM is null then 'brand'
+    when d.UTM_SOURCE is null and d.UTM_CAMPAIGN is null and d.UTM_MEDIUM is null then 'unpaid'
+    else CHANNELGROUP end as CHANNELGROUP,
+    
+    case when al.SUBCHANNEL is null and year(FIRST_SEEN) = 2031 then 'Untracked'
+    when seo.DEAL_ID is not null then 'seo'
+    when d.REFERRER is null and d.UTM_SOURCE is null and d.UTM_CAMPAIGN is null and d.UTM_MEDIUM is null then 'Direct'
+    when d.UTM_SOURCE is null and d.UTM_CAMPAIGN is null and d.UTM_MEDIUM is null then 'referral'
+    else channel end as channel,
+    
+    case when al.SUBCHANNEL is null and year(FIRST_SEEN) = 2031 then 'Untracked'
+    when d.REFERRER is null and d.UTM_SOURCE is null and d.UTM_CAMPAIGN is null and d.UTM_MEDIUM is null then 'brand'
+    when d.UTM_SOURCE is null and d.UTM_CAMPAIGN is null and d.UTM_MEDIUM is null then 'none'
+    else SUBCHANNEL end as SUBCHANNEL,
+
+    
+    case when city is null or city = 'Unknown' or city = 'Multiple' then 'Unknown'
+    when city = 'LA' then 'Los Angeles'
+    else city end as city,
+    
+    case when COUNTRY = 'United States' then 'US'
+    when country = 'United Kingdom' then 'UK'
+    when country = 'Australia' then 'AU'
+    when country is null and year(FIRST_SEEN) = 2031 then 'Untracked'
+    else 'ROW' end as Country,
+    case when DEVICE_TYPE is null and year(FIRST_SEEN) = 2031 then 'Untracked'
+    else ifnull(DEVICE_TYPE,'Desktop') end as DEVICE_TYPE,
+    case WHEN to_DATE(MIN_DEAL_TIME) < '2019-05-01' THEN 'Not Assigned'
+    when VALUE <= 2000 then '0-2000'
+    when VALUE >= 2001 and VALUE <= 5000 then '2001-5000'
+    when VALUE >= 5001 and VALUE <= 10000 then '5001-10000'
+    when VALUE >= 10001 then '+10000' 
+    end as session_value,
+    COUNT(DISTINCT d.DEAL_ID) LEADS,
+    sum(VALUE) LEAD_VALUE
+FROM
+"MANIPULATED_DB"."PIPEDRIVE_GUESTS"."PIPEDRIVE_DEALS_PERSON_DETAILS" d
+LEFT JOIN
+    "STITCH_DB"."ALLOCATION"."SHEET1" al
+on al.SOURCEMEDIUM = concat(d.UTM_SOURCE, ' / ', d.UTM_MEDIUM)
+LEFT JOIN (
+SELECT
+      DEAL_ID
+FROM
+    "MANIPULATED_DB"."PIPEDRIVE_GUESTS"."PIPEDRIVE_DEALS_PERSON_DETAILS" d
+WHERE 
+    (REFERRER like '%www.google%'
+or
+    REFERRER like '%www.yahoo%'
+or
+    REFERRER like '%www.bing%'
+or
+    REFERRER like '%www.baidu%'
+or
+    REFERRER like '%www.ask%'
+or
+    REFERRER like '%www.aol%'
+or
+    REFERRER like '%www.msn%'
+or
+    REFERRER like '%www.yandex%')
+and
+    UTM_SOURCE is null
+and
+    UTM_MEDIUM is null
+and
+    UTM_CAMPAIGN is null       
+) seo on d.DEAL_ID = seo.DEAL_ID
+    
+WHERE
+PIPELINE_ID = 13
+and
+d.OWNER_NAME not like '%Thais Epifanio%' and
+d.OWNER_NAME not like '%Thais%' and
+d.OWNER_NAME not like '%Jack Lee%' and
+d.OWNER_NAME not like '%Info%' and
+d.OWNER_NAME not like '%Ashlee Gladman%' and
+d.OWNER_NAME not like '%Stephane Bridault%' and
+d.OWNER_NAME not like '%Alice%' and
+d.OWNER_NAME not like '%Aidan Bricker%' and
+d.OWNER_NAME not like '%Guest Inbox%' 
+and d.status != 'deleted'
+group by 
+    1,2,3,4,5,6,7,8,9
+    
+        `} );
+        return "Succeeded.";
+        }
+    catch (err)  {
+        return "Failed: " + err;
+        }
+    $$
+    ;
+--------------------------------------------- (5) Test that your procedure runs
+call manipulated_db.HEAP_TEMP.update_heap_lead();
+----------------------------------- (6) Make a task to automatise the procedure 
+CREATE OR REPLACE TASK manipulated_db.HEAP_TEMP.update_heap_lead
+    WAREHOUSE = MAINTENANCE_WH,
+    schedule = 'USING CRON 6 * * * * UTC' -- start at 3:00 am UTC time
+    
+AS call update_heap_lead();
+------------------------------------------------------------- (7) activate task
+alter task manipulated_db.HEAP_TEMP.update_heap_lead resume;
