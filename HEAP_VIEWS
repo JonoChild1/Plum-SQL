@@ -1,0 +1,90 @@
+-- 
+-- ----------------------------------------------------------------------------
+---------------------------------------- (1) and (2) select role, db and schema  
+use data_analyst_wh;
+use database manipulated_db;
+use schema HEAP_TEMP;
+------------------------------------------------- (3) Update procedure name and 
+-------------------------------------- (4) copy sql commands between dash lines 
+create or replace procedure manipulated_db.HEAP_TEMP.update_heap_VIEWS()
+    returns string not null
+    language javascript
+    as
+    $$
+    try { 
+        snowflake.execute ( {sqlText:`
+----------------------------------------- 
+CREATE or replace TABLE "MANIPULATED_DB"."HEAP_TEMP"."HEAP_VIEWS" as
+      
+Select
+    to_date(pv.TIME) time,
+    case when seo.session_id is not null then 'Direct & Organic'
+    when pv.REFERRER is null and pv.UTM_SOURCE is null and pv.UTM_CAMPAIGN is null and pv.UTM_MEDIUM is null then 'Direct & Organic'
+    when pv.UTM_SOURCE is null and pv.UTM_CAMPAIGN is null and pv.UTM_MEDIUM is null then 'Direct & Organic'
+    else SOURCEMEDIUMGROUP end as SOURCEMEDIUMGROUP,
+    
+    case when seo.session_id is not null then 'unpaid'
+    when pv.REFERRER is null and pv.UTM_SOURCE is null and pv.UTM_CAMPAIGN is null and pv.UTM_MEDIUM is null then 'brand'
+    when pv.UTM_SOURCE is null and pv.UTM_CAMPAIGN is null and pv.UTM_MEDIUM is null then 'unpaid'
+    else CHANNELGROUP end as CHANNELGROUP,
+
+    case when seo.session_id is not null then 'seo'
+    when pv.REFERRER is null and pv.UTM_SOURCE is null and pv.UTM_CAMPAIGN is null and pv.UTM_MEDIUM is null then 'Direct'
+    when pv.UTM_SOURCE is null and pv.UTM_CAMPAIGN is null and pv.UTM_MEDIUM is null then 'referral'
+    else channel end as channel,
+    
+    case when seo.session_id is not null then 'nonbrand'
+    when pv.REFERRER is null and pv.UTM_SOURCE is null and pv.UTM_CAMPAIGN is null and pv.UTM_MEDIUM is null then 'brand'
+    when pv.UTM_SOURCE is null and pv.UTM_CAMPAIGN is null and pv.UTM_MEDIUM is null then 'none'
+    else SUBCHANNEL end as SUBCHANNEL,
+    
+    C.NAME as city,
+    case when pv.COUNTRY = 'United States' then 'US'
+    when pv.COUNTRY = 'United Kingdom' then 'UK'
+    when pv.COUNTRY = 'Australia' then 'AU'
+    else 'ROW' end as Country,
+    pv.DEVICE_TYPE,
+    pv.session_id,
+    case when FINAL_VALUE <= 2000 then '0-2000'
+    when FINAL_VALUE >= 2001 and FINAL_VALUE <= 5000 then '2001-5000'
+    when FINAL_VALUE >= 5001 and FINAL_VALUE <= 10000 then '5001-10000'
+    when FINAL_VALUE >= 10001 then '+10000' end as session_value,
+    count(distinct L.LISTINGID) count_listings
+FROM 
+    "STITCH_DB"."PRODUCTION_TEMP"."LISTING" as L
+LEFT JOIN
+    "PROD_DB"."DBO"."CITY" C
+ON C.CITYID = L.CITYID
+INNER JOIN 
+    "MANIPULATED_DB"."HEAP_TEMP"."PATH_TO_LISTINGID" PL ON PL.LISTINGID_JOIN = l.listingid
+INNER JOIN 
+    "HEAP_MAIN_PRODUCTION"."HEAP"."PAGEVIEWS" as PV on PL.PATH = PV.path
+LEFT JOIN
+    "STITCH_DB"."ALLOCATION"."SHEET1" al
+on al.SOURCEMEDIUM = concat(PV.UTM_SOURCE, ' / ', PV.UTM_MEDIUM)
+LEFT JOIN "MANIPULATED_DB"."HEAP_TEMP"."HEAP_SEO_SESSIONS" seo
+on seo.session_id = pv.session_id
+LEFT JOIN "MANIPULATED_DB"."HEAP_TEMP"."HEAP_SESSIONS_VALUE" v on v.session_id = pv.session_id
+where 
+    to_date(pv.TIME) >= '2019-05-01'
+group by 1,2,3,4,5,6,7,8,9,10
+  order by 8 desc
+       
+        `} );
+        return "Succeeded.";
+        }
+    catch (err)  {
+        return "Failed: " + err;
+        }
+    $$
+    ;
+--------------------------------------------- (5) Test that your procedure runs
+call update_heap_VIEWS();
+----------------------------------- (6) Make a task to automatise the procedure 
+CREATE OR REPLACE TASK manipulated_db.HEAP_TEMP.update_heap_VIEWS
+    WAREHOUSE = MAINTENANCE_WH,
+    schedule = 'USING CRON 03 3 * * * UTC' -- start at 3:00 am UTC time
+    
+AS call update_heap_VIEWS();
+------------------------------------------------------------- (7) activate task
+alter task manipulated_db.HEAP_TEMP.update_heap_VIEWS resume;
