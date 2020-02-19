@@ -1,0 +1,75 @@
+-- 
+-- ----------------------------------------------------------------------------
+---------------------------------------- (1) and (2) select role, db and schema  
+use data_analyst_wh;
+use database manipulated_db;
+use schema HEAP_TEMP;
+------------------------------------------------- (3) Update procedure name and 
+-------------------------------------- (4) copy sql commands between dash lines 
+create or replace procedure manipulated_db.HEAP_TEMP.update_heap_CLICKS()
+    returns string not null
+    language javascript
+    as
+    $$
+    try { 
+        snowflake.execute ( {sqlText:`
+----------------------------------------- 
+CREATE or replace TABLE "MANIPULATED_DB"."HEAP_TEMP"."HEAP_CLICKS" as
+      
+select
+    clt.time,
+    ifnull(CHANNELGROUP, 'Unpaid') CHANNELGROUP,
+    case when channel is null and seo.session_id is null then 'Direct'
+    when seo.session_id is not null then 'seo'
+    else channel
+    end as channel,
+    ifnull(SUBCHANNEL,'Unpaid') SUBCHANNEL,
+    c.name CITY,
+    case when clt.COUNTRY = 'United States' then 'US'
+    when clt.COUNTRY = 'United Kingdom' then 'UK'
+    when clt.COUNTRY = 'Australia' then 'AU' end country,
+    clt.DEVICE_TYPE,
+    clt.user_id,
+    l.listingid,
+    case when FINAL_VALUE <= 2000 then '0-2000'
+    when FINAL_VALUE >= 2001 and FINAL_VALUE <= 5000 then '2001-5000'
+    when FINAL_VALUE >= 5001 and FINAL_VALUE <= 10000 then '5001-10000'
+    when FINAL_VALUE >= 10001 then '+10000' end as session_value,
+    clt.session_id
+from 
+    "STITCH_DB"."PRODUCTION_TEMP"."LISTING" l 
+left join "PROD_DB"."DBO"."CITY" c
+on c.cityid = l.cityid
+left join 
+    "MANIPULATED_DB"."HEAP_TEMP"."PATH_TO_LISTINGID" as map_to_id 
+ON 
+    L.LISTINGID = map_to_id.listingid_join
+left join 
+    "HEAP_MAIN_PRODUCTION"."HEAP"."_2_4_LISTINGS_2_CLICK_LISTING_TILE" as clt
+on 
+    lower( replace(map_to_id.path, '%20', '')) = lower( split(clt.href, '?')[0] ) 
+LEFT JOIN
+    "STITCH_DB"."ALLOCATION"."SHEET1" al
+on al.SOURCEMEDIUM = concat(clt.UTM_SOURCE, ' / ', clt.UTM_MEDIUM)
+LEFT JOIN "MANIPULATED_DB"."HEAP_TEMP"."HEAP_SEO_SESSIONS" seo
+on seo.session_id = clt.session_id
+LEFT JOIN "MANIPULATED_DB"."HEAP_TEMP"."HEAP_SESSIONS_VALUE" v on v.session_id = clt.session_id
+       
+        `} );
+        return "Succeeded.";
+        }
+    catch (err)  {
+        return "Failed: " + err;
+        }
+    $$
+    ;
+--------------------------------------------- (5) Test that your procedure runs
+call update_heap_CLICKS();
+----------------------------------- (6) Make a task to automatise the procedure 
+CREATE OR REPLACE TASK manipulated_db.HEAP_TEMP.update_heap_clicks
+    WAREHOUSE = MAINTENANCE_WH,
+    schedule = 'USING CRON 6 * * * * UTC' -- start at 3:00 am UTC time
+    
+AS call update_heap_CLICKS();
+------------------------------------------------------------- (7) activate task
+alter task manipulated_db.HEAP_TEMP.update_heap_CLICKS resume;
