@@ -1,0 +1,62 @@
+---------------------------------------- (1) and (2) select role, db and schema  
+use role accountadmin;
+use warehouse data_analyst_wh;
+use database prod_db;
+use schema public;
+------------------------------------------------- (3) Update procedure name and 
+-------------------------------------- (4) copy sql commands between dash lines 
+create or replace procedure 
+PROD_DB.DBO.proc_insert_data_collection_score_listing()
+    returns string not null
+    language javascript
+    as
+    $$
+    try { 
+        snowflake.execute ( {sqlText:`
+----------------------------------------- 
+INSERT into COLLECTION_SCORE_LISTING (
+select 
+l.listingid, 
+
+case when (ll.NumberOfAvailableDays6Months <= 10 or l.HIDDENFROMSEARCH = 'TRUE') then -20 else 0 end as SCOREHIDDENORAHN,
+case when (l.IsInstantBook = 1 or l.IsInstantBook = TRUE or l.IsInstantBook = 'TRUE') then 20 else -20 end as SCOREIB,
+case when l.isexclusive = 'TRUE' or le.isworking = 'TRUE' or api.listingid is not null then 20
+     when le.isworking = 'FALSE' then -20 else 0 end as SCORECALENDAR,
+CASE WHEN (wdis.week_discount is not null and l.MinimumNights < 7 and wdis.week_discount > 0.03)  
+               or (mdis.month_discount is not null or mdis.month_discount != 0) then 10 else -10 end as SCOREDISCOUNT,
+case when (l.minimumnights > 3) then 0 else 10 end as SCOREMINIMUMNIGHTS,
+
+case
+when l.CancellationPolicyId = 1 then 10
+when l.CancellationPolicyId = 2 then 10
+when l.CancellationPolicyId = 3 then 0
+when l.CancellationPolicyId = 4 then 0
+when l.CancellationPolicyId = 6 then 0
+when l.CancellationPolicyId = 7 then 0
+end as SCORECANCELLATIONPOLICY,
+
+to_date( CONVERT_TIMEZONE( 'UTC', current_timestamp() )) Date
+from 
+stitch_db.production_temp.listing l 
+left join prod_db.dbo.city c on l.cityid = c.cityid
+left join prod_db.dbo.applicationuser au on au.applicationuserid = l.userid
+left join (select * from prod_db.dbo.ListingStatisticsLog where cast(DateCreated as date) = current_date ) as ll on ll.listingid=l.Listingid
+left join prod_db.dbo.listingexternalcalendar as le on le.listingid = l.listingid
+left join (select listingid as listingid, discountpercentage/100 as month_discount from prod_db.pricingconfig.lengthofstaydiscount where lengthofstay = 28) as mdis on mdis.listingid=l.listingid
+left join (select listingid as listingid, discountpercentage/100 as week_discount from prod_db.pricingconfig.lengthofstaydiscount where lengthofstay = 7) as wdis on wdis.listingid=l.listingid
+left join "MANIPULATED_DB"."HEALTH_API"."API_FIRSTUPDATE" api on l.listingid = api.listingid
+where l.status = 3
+and l.onboardingdate <'2020-01-01'
+group by 1,2,3,4,5,6,7
+);
+----------------------------------------- 
+        `} );
+        return "Succeeded.";
+        }
+    catch (err)  {
+        return "Failed: " + err;
+        }
+    $$
+    ;
+--------------------------------------------- (5) Test that your procedure runs
+call PROD_DB.DBO.proc_insert_data_collection_score_listing();
