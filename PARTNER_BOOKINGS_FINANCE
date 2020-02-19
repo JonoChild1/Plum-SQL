@@ -1,0 +1,50 @@
+WITH remaining as
+(
+  With bl as
+(
+SELECT bookingid, SUM(AMOUNT) as amount
+FROM
+"PROD_DB"."DBO"."BOOKINGLEDGER"
+where BOOKINGLEDGERTYPE in (1, 9, 12, 14)
+group by 1)
+
+SELECT 
+ b.bookingid,
+B.PaidTotalCharged - amount RemainingBalance
+FROM
+"PROD_DB"."DBO"."BOOKING" b
+left join bl
+on bl.bookingid = b.bookingid
+)
+
+SELECT
+b.code,
+c.name as city,
+ba.DATECREATED,
+concat(firstname, ' ', lastname) as PartnershipMember,
+round(guesttotalcharged/LISTINGGBPFXRATE,2) as BookingTotalGBP,
+REGEXP_SUBSTR(b.notes, '(\\d+(\\.\\d+)?)', 1, 1, 'e', 1) as GuestCurrencyCommission,
+cu.name GuestCurrency,
+case when contains(b.notes, 'SP') then GUESTTOTALCHARGED - RemainingBalance else GUESTTOTALCHARGED end as GuestCurrencyChargedToDate,
+case when contains(b.notes, 'SP') then 'Yes' else 'No' end as SplitPayment
+
+FROM
+"PROD_DB"."DBO"."BOOKING" b
+left join
+"STITCH_DB"."PRODUCTION_TEMP"."LISTING" l
+on l.listingid = b.listingid
+left join
+"PROD_DB"."DBO"."CITY" c
+on c.cityid = l.cityid
+left join
+"PROD_DB"."DBO"."BOOKINGACTIVITY" ba
+on ba.bookingid = b.bookingid
+left join "PROD_DB"."DBO"."APPLICATIONUSER" au
+on b.userid = au.applicationuserid
+left join "PROD_DB"."DBO"."CURRENCY" as cu
+on cu.currencyid = b.currencyid
+left join remaining
+on remaining.bookingid = b.bookingid
+WHERE LEFT(notes, 13) = 'PSHIP BOOKING'
+and ba.BOOKINGACTIVITYTYPEID in (4,5,15)
+order by 3
